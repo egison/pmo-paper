@@ -1,0 +1,13 @@
+*.toc
+*.omc
+*.aux
+*.blg
+*.dvi
+*.log
+*.out
+*.xcp
+*.bbl
+*.bcf
+*.run.xml
+.omakedb
+.omakedb.lock

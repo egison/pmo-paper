@@ -1,0 +1,1573 @@
+% -*- coding: utf-8; -*-
+% vim: set fileencoding=utf-8 :
+\documentclass{article}
+%\documentclass[english,submission,code=tt]{programming}
+%% First parameter: the language is 'english'.
+%% Second parameter: use 'submission' for initial submission, remove it for camera-ready (see 5.1)
+
+%\renewcommand{\familydefault}{\sfdefault}
+%\renewcommand{\ttdefault}{sansserif}
+\usepackage[bitstream-charter]{mathdesign}
+\usepackage[T1]{fontenc}
+
+\RequirePackage[varqu]{zi4}
+\RequirePackage[libertine]{newtxmath}
+
+
+\setlength\footskip{2\baselineskip}
+\addtolength{\textheight}{-2\baselineskip}
+
+% A4 210 x 297
+% B5 176 x 250
+\setlength{\textwidth}{160mm}
+\setlength{\oddsidemargin}{-1in}
+\setlength{\evensidemargin}{-1in}
+\addtolength{\oddsidemargin}{30mm}
+\addtolength{\evensidemargin}{30mm}
+
+\setlength{\textheight}{297mm}
+\setlength{\topmargin}{0mm}
+\addtolength{\topmargin}{-\headheight}
+\addtolength{\topmargin}{-\headsep}
+\addtolength{\topmargin}{-\topskip}
+\addtolength{\textheight}{-60mm}
+
+
+\usepackage[backend=biber]{biblatex}
+\addbibresource{main.bib}
+
+\usepackage{listings}
+
+\usepackage{booktabs} % For formal tables
+\usepackage{hhline}
+\usepackage{multicol}
+\usepackage{fancyvrb}
+\usepackage{xcolor}
+
+\newcommand{\RNum}[1]{\uppercase\expandafter{\romannumeral #1\relax}}
+\newcommand{\todo}[1]{\textcolor{red}{(TODO: #1)}}
+
+\usepackage{textcomp}
+\definecolor{P@Blue}{named}{blue}
+\definecolor{P@ColorOnBlue}{gray}{.95}
+\definecolor{P@GrayFG}{named}{darkgray}
+\definecolor{P@GrayBG}{gray}{.90}
+\definecolor{P@GrayComment}{gray}{.40}
+\RequirePackage{listings}
+\lstset{%
+  basicstyle=\small\ttfamily,%
+  columns=fullflexible,
+  keepspaces=true,
+  extendedchars=true,
+  upquote=true,
+  captionpos=t,
+  backgroundcolor=\color{P@GrayBG},%
+  breaklines=true;
+  postbreak=\raisebox{0ex}[0ex][0ex]{\ensuremath{\color{P@Blue}\hookrightarrow\space}},
+%  numbers=left,
+%  numberstyle=\P@listingnumbersfont,
+%  numbersep=.5em,
+  frame=single,
+  framerule=0pt}
+\lstdefinelanguage{egison}{%
+  sensitive = true,
+  alsoletter={-},
+  keywords = [1]{match-all, match-all-dfs, match, matcher, something, loop, define, lambda},
+  comment=[l]{;},
+}%
+\lstdefinelanguage{haskell}{%
+  sensitive = true,
+  comment=[l]{--},
+}%
+\lstset{%
+  language={egison},%
+  keywordstyle=[1]\textbf,
+  stringstyle=\color{brown},%
+  commentstyle={\color{P@GrayComment}},%
+}
+\lstset{%
+  language={haskell},%
+  keywordstyle=[1]\textbf,
+  stringstyle=\color{brown},%
+  commentstyle={\color{P@GrayComment}},%
+}
+
+\begin{document}
+
+\title{Egison Tutorial: Functional Programming in Pattern-Matching-Oriented Programming Style}
+%\titlerunning{Preparing Articles for Programming} %optional, in case that the title is too long; the running title should fit into the top page column
+
+\author{Satoshi Egi, Yuichi Nishiwaki}
+
+\maketitle
+
+% Please always include the abstract.
+% The abstract MUST be written according to the directives stated in 
+% http://programming-journal.org/submission/
+% Failure to adhere to the abstract directives may result in the paper
+% being returned to the authors.
+\begin{abstract}
+  % Context:
+  Throughout the history of functional programming, recursion has been emanating as a natural method for describing loops in programs.
+  % Inquiry:
+  However, there does often exist a substantial cognitive distance between the recursive definition and the simplest explanation of an algorithm even for the basic list processing functions such as \texttt{map}, \texttt{concat}, or \texttt{unique}; when we explain these functions, we seldom use recursion explicitly as we do in functional programming.
+  For example, \texttt{map} is often explained as follows: the map function takes a function and a list and returns a list of the results of applying the function to all the elements of the list.
+  
+  % Approach:
+  This paper introduces a new programming style called \emph{pattern-matching-oriented} programming for filling this gap.
+  An essential ingredient of our method is utilizing pattern matching for non-free data types.
+  Pattern matching for non-free data types features non-linear pattern matching with backtracking and extensibility of pattern-matching algorithms.
+  % Knowledge
+  Several non-standard pattern constructs such as not-patterns, loop patterns, and sequential patterns are derived from this pattern-matching facility.
+  Based on that result, this paper introduces many programming techniques that replace explicit recursions with an intuitive pattern by confining recursions inside a pattern.
+  We classify these techniques as pattern-matching-oriented programming design patterns.
+  
+  % Grounding, and Importance:
+  These programming techniques allow us to redefine not only the most basic functions for list processing such as \texttt{map}, \texttt{concat}, or \texttt{unique} more elegantly than the traditional functional programming style, but also more practical mathematical algorithms and software such as a SAT solver, computer algebra system, and database query language that we had not been able to implement concisely.
+\end{abstract}
+
+\section{Introduction}\label{introduction} % Nearly Complete
+
+How do you answer the question ``What is the map function?''
+We believe most people answer as follows:
+
+\begin{itemize}
+\item[(1)] ``The map function takes a function and a list and returns a list of the results of applying the function to all the elements of the list.''
+\end{itemize}
+
+\noindent Few people answer as follows:
+
+\begin{itemize}
+\item[(2)] ``The map function takes a function and a list and returns an empty list if the argument list is empty. Otherwise, it returns a list whose head element is the result of applying the function to the head element of the argument list, and the tail part is the result of applying the map function recursively to the tail part of the argument list.''
+\end{itemize}
+
+Obviously, there is a significant gap between these two explanations.
+The former explanation is simpler and more straightforward than the latter.
+However, the current functional definition of \texttt{map} is based on the latter as follows.
+
+\begin{lstlisting}[language=haskell]
+map _ [] = []
+map f (x : xs) = (f x) : (map f xs)
+\end{lstlisting}
+
+\noindent Interestingly, this definition has been almost unchanged for 60 years since McCarthy first presented the definition of \texttt{maplist} in~\cite{mccarthy1958maplist}.
+The only difference is a way for describing conditional branches: McCarthy uses predicates, whereas Haskell uses pattern matching.
+
+\begin{lstlisting}
+maplist[x ;f] = [null[x] -> NIL; T -> cons[f[x]; maplist[cdr[x]; f]]]
+\end{lstlisting}
+
+Recursion used in the above definition is a mathematically simple but powerful framework for representing computations and has been a very basic construct of functional programming.
+%Many basic functions such as \texttt{filter}, \texttt{concat}, and \texttt{unique} are also defined simply enough using recursions explicitly.
+Recursion is heavily used for definitions of many basic functions such as \texttt{filter}, \texttt{concat}, and \texttt{unique} and most of them are also simple enough.
+Throughout the history of functional programming, recursion emanates as the natural method for describing loops in programs.
+For example, recursion schemes~\cite{meijer1991functional} are famous work that classifies programming patterns in functional programming.
+%\todo{citation of recursion-scheme.}
+
+\smallskip
+
+However, as mentioned earlier, there \emph{does} exist a substantial cognitive distance between the definition and the simplest explanation of that definition.
+%Illustration of this gap leads us to the hint to fill this gap.
+To illustrate this gap, we define two variations of \texttt{map}.
+
+The first one is \texttt{adjacentMap}.
+\texttt{adjacentMap} takes a function of two arguments and a list, and returns a list of applying the function for all the adjacent pairs in the list.
+The conditional branch for the recursive definition of \texttt{adjacentMap} is not as simple as that of \texttt{map}.
+
+%\todo{This program cannot be written intuitively even if we use the \texttt{fold} function.}
+
+\begin{lstlisting}[language=haskell]
+adjacentMap _ [] = []
+adjacentMap _ [_] = []
+adjacentMap f [x, y] = [f x y]
+adjacentMap f (x : y : xs) = (f x y) : (adjacentMap f (y : xs))
+\end{lstlisting}
+
+The second one is \texttt{mapWithBothSides}.
+\texttt{mapWithBothSides} takes a function of three arguments and a list, and returns a list of applying the function for all three-tuples consisting of the head, the current element, and the tail.
+\texttt{mapWithBothSides} is used for generating lists by rewriting the element of an input list.
+This function is useful for handling logical formulae, for example.
+The definition of \texttt{mapWithBothSides} gets more complicated than \texttt{adjacentMap}.
+We define a helper function for \texttt{mapWithBothSides} as follows.
+
+\begin{lstlisting}[language=haskell]
+mapWithBothSides f xs = mapWithBothSides' f [] xs
+ where
+  mapWithBothSides' f xs [] = []
+  mapWithBothSides' f xs (y : ys) = (f xs y ys) : (mapWithBothSides' f (xs ++ [y]) ys)
+\end{lstlisting}
+
+The explanations for these variations of \texttt{map} is similar to (1), and their definitions should be similar to each other.
+However, their definitions are very different from each other.
+A hint for filling the gap is hidden behind these differences.
+
+The cause of these difference is lack of a pattern like ``\texttt{hs ++ ts}'' that divides a target list into head and tail parts.
+We call this pattern a \emph{join pattern}.
+Unlike traditional pattern matching for algebraic data types, this pattern has multiple decompositions.
+Pattern matching for \emph{non-free data types} is necessary for handling join patterns.
+% すべて同じような意味だけど，全然違う見た目のコードになっている．
+% hs ++ ... のようなパターンが書けないことがその原因ということに気づく．
+% 頭の中では同じパターンで書ける．
+% Traditionalなコードでパターンマッチで書けないのは，non-free data typesに対するパターンマッチを使っていないから．
+% (実は，Egisonのアイデアは，mapWithBothSidesを定義したときに，生まれた．)
+%The reason for the complexities of the above definition comes from non-free data types.
+%The reason why we can handle algebraic data types in Haskell is pattern matching.
+
+A data type is called non-free if there are multiple different forms for equivalent data.
+For example, multisets, sets, graphs, and polynomials are non-free data types.
+Lists with join constructors are also non-free data types because the list \texttt{[1,2]} has multiple forms with \texttt{Join}: \texttt{Join [] [1,2]}, \texttt{Join [1] [2]}, and \texttt{Join [1,2] []}, for example.
+
+In Egison~\cite{egisonWeb} whose distinguishing feature is a pattern matching for non-free data types, we can define \texttt{map}, \texttt{adjacentMap}, and \texttt{mapWithBothSides} concisely and in the very similar way as follows.\footnote{In this paper, we present Egison in Haskell-like syntax to omit the explanation of the syntax detail, though Egison originally has Lisp-like syntax.}\footnote{The creator of Egison, an author of this paper,  got an idea of the language when he implemented \texttt{mapWithBothSides} for implementing an automated theorem conjecturer.}
+
+\begin{lstlisting}[language=egison]
+(define $map
+  (lambda [$f $xs]
+    (match-all xs (list something)
+      [<join _ <cons $x _>> (f x)])
+\end{lstlisting}
+\begin{lstlisting}[language=egison]
+(define $adjacent-map
+  (lambda [$f $xs]
+    (match-all xs (list something)
+      [<join _ <cons $x <cons $y _>>> (f x y)])
+\end{lstlisting}
+\begin{lstlisting}[language=egison]
+(define $map-with-both-sides
+  (lambda [$f $xs]
+    (match-all xs (list something)
+      [<join $hs <cons $x $ts>> (f hs x ts)])
+\end{lstlisting}
+
+The above definitions are close to the explanation of \texttt{map} given in (1).
+We achieved this by hiding the recursion in the definition of \texttt{list}, which defines the pattern-matching algorithm for join patterns.
+We call this programming style \emph{pattern-matching-oriented programming style}.
+The above examples show just a part of expressiveness of pattern-matching-oriented programming.
+This paper introduces full features of the Egison pattern-matching-oriented programming language and presents all the techniques we discovered so far for replacing explicit recursions with an intuitive pattern.
+
+The remainder of this paper is organized as follows.
+Sect.~\ref{related} reviews the history of pattern matching and sees how pattern matching has evolved to extend its target data types to non-free data types.
+Sect.~\ref{quick-tour} introduces Egison and various pattern constructs for non-free data types.
+These pattern constructs increase the number of situations in which we can replace verbose recursions with more intuitive patterns.
+Sect.~\ref{pmo1} catalogs pattern-matching-oriented programming techniques utilizing the features introduced in Sect.~\ref{quick-tour}.
+Sect.~\ref{pmo2} explores the effect of pattern-matching-oriented programming in more practical situations.
+Finally, Sect.~\ref{conclusion} concludes the paper.
+
+
+\section{Related Work: Evolution of Pattern Matching}\label{related}
+
+%This section reviews the history of programming languages, mainly focusing on pattern matching.
+
+Abstractions of algorithms consist of two kinds of abstractions: procedural abstraction and data abstraction.
+Pattern matching is an important feature of data abstraction.
+Before the invention of pattern matching, code for decomposing data makes programs verbose.
+For example, we had to write many \texttt{car} and \texttt{cdr} to decompose a list.
+% TODO: Explain car and cdr
+Pattern matching relieved programmers of this burden by allowing them to describe data decomposition only with an intuitive pattern.
+When pattern matching first appeared, pattern matching could only be applied to the specific types of algebraic data types.
+Huge efforts have been conducted to remove this limitation.
+Pattern matching has evolved by bringing the programs that were written in the body of match clauses into the definitions of patterns.
+This importation has gradually proceeded.
+As a result, state-of-the-art work allows us pattern matching for non-free data types.
+This section reviews this evolution by seeing what happened in each decade.
+
+The early history of pattern matching is described in detail also in a paper on the history of Haskell~\cite{Hudak07ahistory} and Turner's paper~\cite{turner2012some}.
+
+\subsection{1960s-1970s: Dawn of Pattern Matching}
+
+%Landin's paper ``The Next 700 Programming Languages'' published in 1966~\cite{landin1966next} is the first paper that proposed a language with pattern matching.
+%ISWIM, the language proposed in this paper, has a pattern-matching facility for tuples, lists with a fixed length.
+
+Burstall's paper in 1969~\cite{burstall1969proving} proposed pattern matching that looks similar to the pattern-matching facility that is widely used nowadays.
+Burstall proposed to use the notation ``\texttt{let cons(a, y) = x}'' instead of ``\texttt{let (a, y) = decons(x)}''.\footnote{The latter notation had already been supported by ISWIM that supports pattern matching for tuples.}
+The following program is the first functional program that uses pattern matching.
+%\texttt{concat} is defined in the modern fashion.
+%``\texttt{:}'' and ``\texttt{::}'' in the second and third lines are used on behalf of ``\texttt{->}'' and ``\texttt{cons}'', respectively.
+
+\begin{lstlisting}[language=egison]
+let rec concat(xs1, xs2) = cases xs1:
+                             x :: xs1: x :: concat(xs1, xs2)
+                             nil()   : xs2
+\end{lstlisting}
+
+Pattern matching was also invented in a context of computer algebra.
+Pattern matching for symbolical mathematical expression was implemented in the symbol manipulation system proposed by McBride~\cite{mcbride1969symbol}, which was developed on top of Lisp.
+This pattern-matching system supports \emph{non-linear patterns}.
+A non-linear pattern is a pattern that allows multiple occurrences of the same variables in a pattern.
+Their paper demonstrates some examples that process symbolic mathematical expressions to show the expressive power of non-linear patterns.
+However, this approach does not support pattern matching with multiple results, and users cannot extend its pattern-matching facility.
+
+User-defined algebraic data types are invented in 1970s.
+HOPE~\cite{burstall1980hope} by Burstall, MacQueen, and Sannella is a well-known language that introduced user-defined algebraic data types and pattern matching for them.
+The following is the definition of binary trees presented in this paper.
+%Its definition of algebraic data types is almost the same as modern programming languages.
+
+\begin{lstlisting}[language=egison]
+data tree(alpha) == empty ++ tip(alpha) ++ node(tree(alpha)#tree(alpha))
+\end{lstlisting}
+
+%The other important features of functional programming had also evolved in this decade.
+%The most significant innovation over the same period is the invention of Scheme by Steele and Sussman whose distinguished properties are \texttt{lambda} with lexical scoping and tail recursion~\cite{steele1976lambdaImperative,steele1976lambdaDeclaretive,steele1978revised,steele1978rabbit}.
+%The Hindley-Milner type system~\cite{milner1978theory} by Milner also appeared over the same period.
+%The foundation of the current functional programming was established in this decade.
+
+\subsection{1980s: Spread of Pattern Matching and Invention of Views}
+
+In this decade, functional languages with user-defined algebraic data types and pattern matching for them became common.
+Miranda by Turner~\cite{turner1985miranda} and Haskell~\cite{Hudak07ahistory} were the most popular languages among these languages, and the first pattern-matching extensions for widening the target of pattern matching beyond algebraic data types were designed on them.
+%Miranda was widely used before Haskell appeared.
+%However, Miranda was commercial software and had not been placed in the public domain, which leads to the development of Haskell by the academic functional programming community.
+%Haskell has become the most popular functional programming language, and most pattern-matching extensions have been developed on Haskell.
+
+Miranda's laws~\cite{thompson1986laws,thompson1990lawful} and Wadler's views~\cite{wadler1987views} are earlier such research.
+They discarded the assumption that one-to-one correspondence should exist between patterns and data constructors.
+They enable pattern matching for data types whose data have multiple representation forms.
+For example, Wadler's paper on views~\cite{wadler1987views} present pattern matching for complex numbers that have two different representation forms: Cartesian and polar.
+However, their expressiveness is not enough for representing patterns for non-free data types.
+They neither support non-linear patterns and pattern matching with multiple results.
+
+At the same time, more expressive pattern matching is explored by Queinnec~\cite{queinnec1990compilation}, who proposed an expressive pattern matching for lists.
+Though this proposal is specialized to lists and not extensible, the proposed language supports the \texttt{cons} and the \texttt{join} patterns, non-linear pattern matching with backtracking, \texttt{matchAll}, not-patterns, and recursive patterns.
+His proposal achieves almost perfect expressiveness for patterns of lists and allows the pattern-matching-oriented definition of the basic list processing functions.
+For example, the following \texttt{member} definition is presented in Queinnec's paper~\cite{queinnec1990compilation}.
+
+\begin{lstlisting}[language=]
+member ?x (??- ?x ??-) -> true
+member ?x ?-           -> false
+\end{lstlisting}
+
+\subsection{1990s and 2000s: Exploration for Expressive Patterns}
+
+Following the pattern-matching extensions in the previous decade, several new pattern-matching extensions for extending the target range of pattern matching have been proposed by several researchers.
+We review these proposals in this section.
+
+\subsubsection{Erwig's Active Patterns}
+
+Erwig's active patterns~\cite{erwig1996active}  are an attempt to extend the expressiveness of patterns beyond Wadler's views.
+Active patterns also allow users to customize the pattern-matching algorithm for each pattern.
+\texttt{Add'} in the following program is a pattern constructor of active patterns.
+\texttt{Add'} extracts an element that is identical with the first argument of \texttt{Add'} from the target collection.
+
+\begin{lstlisting}[language=egison]
+pat Add' (x,_) =
+  Add (y,s) => if x == y then Add (y,s)
+                         else let Add' (x,t) = s
+                                in Add (x, Add (y, t)) end
+\end{lstlisting}
+
+Using the above \texttt{Add'}, we can define the \texttt{member} function as follows, hiding the recursion as the pattern-matching-oriented definition of \texttt{map} we presented in Sect.~\ref{introduction}.
+
+\begin{lstlisting}[language=egison]
+fun member x (Add' (x,s)) = true
+  | member x s            = false
+\end{lstlisting}
+
+However, the expressiveness of active patterns is still limited.
+Active patterns do not support pattern matching with multiple results: \texttt{Add'} can take only a value and cannot take a pattern variable as its first argument.
+Non-linear patterns exhibit their full ability when they are combined with pattern matching with backtracking.
+
+\subsubsection{Tullsen's First Class Patterns}
+
+Tullsen's first class patterns~\cite{tullsen2000first} are another extension of views.
+First class patterns provide a sophisticated syntax for defining user-defined patterns.
+It allows users to directly define a method for decomposing data for each pattern constructor.
+For example, the pattern constructor ``\verb|cons#|'' that decomposes a list in the join representation is defined as follows.
+The syntax of \emph{next-target expressions} of Egison, which will be explained in Appendix~\ref{define-matchers}, is similar to that of first class patterns.
+
+\begin{lstlisting}[language=egison]
+data List a = Nil | Unit a | Join (List a) (List a)
+
+cons# Nil = Nothing
+cons# (Unit a) = Just (a,Nil)
+cons# (Join xs ys) = case cons# xs of
+                       Just (x,xs') -> Just (x, Join xs' ys)
+                       Nothing      -> cons# ys
+\end{lstlisting}
+
+First class patterns support pattern matching with multiple results.
+We can define pattern constructors that have multiple decompositions simply by changing the type of the return value of pattern constructors from \texttt{Maybe} to \texttt{List}.
+However, the expressiveness of first class patterns is still limited because it does not support non-linear patterns.
+Non-linear pattern matching is a necessary feature for describing useful patterns for non-free data types.
+
+\subsubsection{Functional Logic Programming}\label{curry}
+
+Functional logic programming is an independent approach for pattern matching against non-free data types.
+Curry~\cite{hanus1995curry} by Hanus is the most popular functional logic programming language.
+Curry supports both properties: non-linear patterns and pattern matching with multiple results.
+Therefore, we can write expressive patterns for non-free data types in Curry.
+
+However, Curry does not intend to utilize non-linear pattern matching with multiple results fully.
+For example, non-linear pattern matching is not efficiently executed in Curry.
+Theoretical time complexities depend on the size of patterns as follows.\footnote{\cite{egi2018Aplas} shows benchmark results of \texttt{seq2} and \texttt{seq3}.}
+The reason for the difference of time complexities between these patterns is that Curry transforms non-linear patterns into pattern guards~\cite{antoy2010programming,antoy2001constructor,hanus2007multi}.
+Pattern guards are applied after enumerating all pattern-matching results.
+Therefore, substantial unnecessary enumerations often occur before the application of pattern guards.
+
+\begin{lstlisting}[language=egison]
+seq2 (insert x (insert (x+1) _)) = "Matched"
+seq2 _ = "Not matched"
+
+seq3 (insert x (insert (x+1) (insert (x+2) _))) = "Matched"
+seq3 _ = "Not matched"
+
+seq2 (take 10 (repeat 0)) -- returns "Not matched" in O(n^2) time
+seq3 (take 10 (repeat 0)) -- returns "Not matched" in O(n^3) time
+\end{lstlisting}
+
+\noindent Moreover, Curry does not provide a special syntax construct for handling multiple pattern-matching results.
+Curry provides \texttt{findall} for handling multiple unification results.
+However, if we use \texttt{findall} for pattern matching, the program gets more complicated than the functional approach.
+For example, Curry program that defines the \texttt{map} function in the pattern-matching-oriented style is as follows.
+
+\begin{lstlisting}[language=egison]
+map f xs = findall (\y -> let x free in (_ ++ (x : _)) =:= xs & f x =:= y)
+\end{lstlisting}
+
+%Another key difference between functional logic programming and other functional approaches is the method for defining the pattern-matching algorithms for each pattern.
+%In functional logic programming, we describe pattern-matching algorithms in the logic-programming style.
+%A pattern constructor takes decomposed values and returns the target data in its definition.
+%On the other hand, in the functional approach, a pattern constructor takes a target and returns the decomposed values.
+%In the logic-programming style, it is difficult to describe efficient pattern-matching algorithms directly.
+
+\subsection{2010s: Toward a Unified Theory of Pattern-Matching-Oriented Programming}
+
+In this decade, a unified theory for practical pattern matching for non-free data types has been pursued.
+Egison~\cite{egi2018Aplas} proposed by the same authors of this paper is such research.
+The research listed and organized the properties for practical pattern matching for non-free data types.
+They proposed three criteria in their paper.
+The criteria are as follows:
+
+\begin{enumerate}
+\item Efficiency of the backtracking algorithm for non-linear patterns,
+\item Extensibility of pattern matching, and
+\item Polymorphism in patterns.
+\end{enumerate}
+
+\medskip
+
+The first two properties are the properties that had already been discussed in the previous decades, though they had not been discussed simultaneously.
+Egison fulfills both properties as follows.
+
+\begin{lstlisting}[language=egison]
+(match-all (take n (repeat 0)) (multiset integer) [<cons $x <cons ,(+ x 1) _>> x])
+; returns [] in O(n^2) time
+(match-all (take n (repeat 0)) (multiset integer) [<cons $x <cons ,(+ x 1) <cons ,(+ x 2) _>>> x])
+; returns [] in O(n^2) time
+\end{lstlisting}
+
+The above expressions match a collection that consists of $n$ zeros as a multiset of integers for enumerating sequential pairs and triples, respectively.
+This target collection contains neither sequential pairs nor triplets, therefore both expressions return an empty collection.
+
+% TODO: 上のプログラムのそれぞれの箇所の説明．(matchAll, matcher, backtrackingのことも説明する．)
+\texttt{matchAll} is a built-in syntax construct of Egison that collects all the pattern-matching results and returns a collection where the body expression has been evaluated for each result.
+\texttt{matchAll} takes one argument \emph{matcher} that is ``\texttt{multiset integer}'' in the above case.
+A matcher is an Egison specific object that knows how to decompose the target following the given pattern.
+The matcher is specified between ``\texttt{as}'' and ``\texttt{with}'', which are reserved words.
+``\texttt{multiset}'' is a user-defined function that takes a matcher for the elements and returns a matcher for multisets.
+``\texttt{multiset}'' defines a method for interpreting the cons (\texttt{:}) pattern.
+``\texttt{integer}'' is a user-defined matcher that is used for pattern-matching an integer.
+``\verb|_|'' that appears in a pattern is a wildcard.
+Pattern variables are prepended with ``\verb|$|''.
+An expression in a pattern following ``\verb|#|'' is called a \emph{value pattern}.
+A value pattern is evaluated and compared with the target.
+In the following example, ``\verb|#x|'' is a value pattern.
+As a result, ``\texttt{multiset integer}'' is evaluated as a matcher for pattern-matching a multiset of integers.
+
+The pattern-matching algorithm inside Egison includes the backtracking mechanism for efficient non-linear pattern matching.
+In the above case, Egison interpreter does not try pattern matching for ``\verb|#(x + 2)|'' because pattern matching for ``\verb|#(x + 1)|'' always fails.
+Therefore, the time complexities of the above expressions are identical.
+For reading this paper, we do not need to know this pattern-matching algorithm, which is discussed in~\cite{egi2018Aplas} in detail.
+
+Moreover, Egison uses call-by-need evaluation, and \texttt{matchAll} is evaluated lazily.
+Therefore, only the necessary matches are calculated at the pattern-matching process.
+
+\medskip
+
+The third is a new property that was discussed for the first time in Egison.
+Polymorphic patterns are important for non-free data types because some data are pattern-matched as various non-free data types at the different parts of a program.
+For example, a collection is pattern-matched as a list, a multiset, and a set.
+Polymorphic patterns reduce the number of names for pattern constructors.
+
+In the following sample, a list ``\texttt{[1,2,3]}'' is pattern-matched using different matchers with the same cons pattern.
+In the case of sets, the rest elements are the same as the original collection because we ignore the redundant elements.
+If we interpret a set as a collection that contains infinitely many copies of each element, this specification of cons for sets is natural.
+
+\begin{lstlisting}[language=egison]
+(match-all {1 2 3} (list integer) [<cons $x $rs> [x rs]]) ; {[1 {2 3}]}
+(match-all {1 2 3} (multiset integer) [<cons $x $rs> [x rs]]) ; {[1 {2 3}] [2 {1 3}] [3 {1 2}]}
+(match-all {1 2 3} (set integer) [<cons $x $rs> [x rs]]) ; {[1 {1 2 3}] [2 {1 2 3}] [3 {1 2 3}]}
+\end{lstlisting}
+
+Polymorphic patterns are useful especially when we use value patterns.
+As well as other patterns, the behavior of value patterns is dependent on matchers.
+For example, an equality ``\texttt{[1,2,3] == [2,1,3]}'' between collections is false if we regard them as mere lists but true if we regard them as multisets.
+Still, thanks to polymorphism of patterns, we can use the same syntax for both types.
+This dramatically improves the readability of the program and makes programming with non-free data types easy.
+
+\begin{lstlisting}[language=egison]
+(match-all {1 2 3} (list integer) [,{2 1 3} "Matched"]) ; {}
+(match-all {1 2 3} (multiset integer) [,{2 1 3} "Matched"]) ; {"Matched"}
+\end{lstlisting}
+
+The rest of this paper discusses programming techniques utilizing Egison.
+
+%\section{Quick Tour of the Egison Pattern-Matching-Oriented Programming Language}\label{quick-tour}
+\section{Quick Tour of the Egison Pattern-Matching-Oriented Language}\label{quick-tour}
+
+This section introduces the built-in syntax constructs for pattern matching in Egison.
+Most of them are discussed also in ~\cite{egi2018Aplas} and~\cite{egi2018loop}.
+Sequential patterns in Sect~\ref{seq-patterns} are newly proposed in this paper.
+
+\subsection{\texttt{matchAll} and \texttt{matchAllDFS} for Handling Multiple Pattern-Matching Results}
+
+% 流れ:
+% matchAllはただ複数の結果を返すだけでなく，無限の結果を持つ場合も対応している．
+% matchAllは幅優先探索する．そのため，結果の順番が好ましくない場合もある．
+% 無限の結果をすべて列挙できないが，深さ優先探索するmatchAllDFSもある．
+
+The \texttt{matchAll} expression is designed to enumerate all countably infinite pattern-matching results.
+For this purpose, users sometimes need to care about the order of pattern-matching results.
+
+Let us start by showing a representative sample.
+The \texttt{matchAll} expression below enumerates all pairs of natural numbers.
+We extract the first $8$ elements with the \texttt{take} function.
+\texttt{matchAll} traverses the reduction tree of pattern matching in breadth-first search to traverse all the nodes~(Sect. 5.2 of~\cite{egi2018Aplas}).
+As a result, the order of the pattern-matching results is as follows.
+
+\begin{lstlisting}[language=egison]
+(take 8 (match-all nats (set something) [<cons $x <cons $y _>> [x y]]))
+; {[1 1] [1 2] [2 1] [1 3] [2 2] [3 1] [1 4] [2 3]}
+\end{lstlisting}
+
+The above order is preferable for traversing an infinitely large reduction tree.
+However, sometimes, this order is not preferable (see Sect.~\ref{nested-join-cons} and~\ref{trees}).
+\texttt{matchAllDFS} that traverses a reduction tree in depth-first order is provided for this reason.
+
+\begin{lstlisting}[language=egison]
+(take 8 (match-all-dfs nats (set something) [<cons $x <cons $y _>> [x y]]))
+; {[1 1] [1 2] [1 3] [1 4] [1 5] [1 6] [1 7] [1 8]}
+\end{lstlisting}
+
+In the above sample, the \texttt{something} matcher is used.
+\texttt{something} is a matcher that can be used for arbitrary objects but can handle only pattern variables and wildcards.
+\texttt{something} is the only built-in matcher in Egison.
+
+\subsection{Value Patterns and Predicate Patterns for Representing Non-linear Patterns}\label{value-patterns}
+
+\texttt{matchAll} gets even more powerful when combined with non-linear patterns.
+For example, the following non-linear pattern matches when the target collection contains two identical elements.
+
+\begin{lstlisting}[language=egison]
+(match-all {1 2 3 2 4 3} (list integer) [<join _ <cons $x <join _ <cons ,x _>>>> x]) ; {2 3}
+\end{lstlisting}
+
+Value patterns play an important role in representing non-linear patterns.
+A value pattern matches the target if the target is equal to the content of the value pattern.
+A value pattern is prepended with ``\verb|#|'' and the expression after ``\verb|#|'' is evaluated referring to the value bound to the pattern variables that appear on the left side of the patterns.
+As a result, for example, ``\verb|$x : #x : _|'' is valid, but ``\verb|#x : $x : _|'' is invalid.
+
+Let us show pattern matching for \textit{twin primes} as a sample of non-linear patterns.
+Twin primes are pairs of prime numbers whose forms are $(p, p+2)$.
+\texttt{primes} is an infinite list of prime numbers.
+This \texttt{matchAll} extracts all twin primes from this infinite list of prime numbers.
+
+%\todo{must be \texttt{matchAll} not \texttt{matchAllDFS}}
+%\todo{The \texttt{integer} matcher is an alias of the \texttt{eq} matcher.}
+
+\begin{lstlisting}[language=egison]
+(define $twin-primes
+  (match-all primes (list integer)
+    [<join _ <cons $p <cons ,(+ p 2) _>>> [p (+ p 2)]]))
+
+(take 8 twin-primes) ; {[3 5] [5 7] [11 13] [17 19] [29 31] [41 43] [59 61] [71 73]}
+\end{lstlisting}
+
+%Value patterns often check the equality of data.\footnote{Interpretation of value patterns is defined in a matcher by users.
+%Therefore, we can use an arbitrary predicate for pattern matching for a value pattern, though the equality predicate is often used for this purpose.}
+There are cases that we might want to use more general predicates in patterns than equality.
+Predicate patterns are provided for such a purpose.
+A predicate pattern matches the target if the predicate returns true for the target.
+A predicate pattern is prepended with ``\texttt{?}'', and a predicate of one argument follows after ``\texttt{?}''.
+
+\begin{lstlisting}[language=egison]
+(define $twin-primes
+  (match-all primes (list integer)
+    [<join _ <cons $p <cons ?(lambda [$q] (eq? q (+ p 2))) _>>> [p (+ p 2)]]))
+\end{lstlisting}
+
+\subsection{Logical Pattern Constructs: And-Patterns, Or-Patterns, and Not-Patterns}\label{not-patterns}
+
+The situations where and-patterns and or-patterns are useful are similar to those of the existing languages, whereas not-patterns become useful when they are combined with non-linear pattern matching with backtracking.
+
+We start by showing pattern matching for \emph{prime triplets} as an example of and-patterns and or-patterns.
+A prime triplet is a triplet of primes whose form is $(p,p+2,p+6)$ or $(p,p+4,p+6)$.
+The and-pattern is used as an as-pattern.
+The or-pattern is used to match both of $p+2$ and $p+4$.
+
+\begin{lstlisting}[language=egison]
+(define $prime-triplets
+  (match-all primes (list integer)
+    [<join _ <cons $p <cons (& (| ,(+ p 2) ,(+ p 4)) $m) <cons ,(+ p 6) _>>>> [p m (+ p 6)]]))
+
+(take 8 prime-triplets)
+; {[5 7 11] [7 11 13] [11 13 17] [13 17 19] [17 19 23] [37 41 43] [41 43 47] [67 71 73]}    
+\end{lstlisting}
+
+
+A not-pattern matches a target if the pattern does not match the target, as its name implies.
+A not-pattern is prepended with ``\texttt{!}'', and a pattern follows after ``\texttt{!}''.
+The following \texttt{matchAll} enumerates sequential pairs of prime numbers that are \emph{not} twin primes.
+
+\begin{lstlisting}[language=egison]
+(take 10 (match-all primes (list integer)
+           [<join _ <cons $p (& !#(p + 2) $q) _>> [p q]]))
+; {[2 3] [7 11] [13 17] [19 23] [23 29] [31 37] [37 41] [43 47] [47 53] [53 59]}
+\end{lstlisting}
+
+\subsection{Loop Patterns for Representing Repetition}
+
+A loop pattern is a pattern construct for representing a pattern that repeats multiple times.
+It is an extension of Kleene star operator of regular expressions for general non-free data types~\cite{egi2018loop}.
+
+Let us start by considering pattern matching for enumerating all combinations of two elements from a target collection.
+It can be written using \texttt{matchAll} as follows.
+
+\begin{lstlisting}[language=egison]
+(define $comb2
+  (lambda [$xs]
+    (match-all xs (list integer)
+      [<join _ <cons $x_1 <join _ <cons $x_2 _>>>>
+       {x_1 x_2}])))
+
+(comb2 {1 2 3 4}) ; {{1 2} {1 3} {2 3} {1 4} {2 4} {3 4}}
+\end{lstlisting}
+
+Egison allows users to append indices to a pattern variable as \verb|$x_1| and \verb|$x_2| in the above sample.
+They are called \emph{indexed variables} and represent $x_1$ and $x_2$ in mathematical expressions.
+The expression after ``\verb|_|'' must be evaluated to an integer and is called an \textit{index}.
+We can append as many indices as we want like ``\verb|x_i_j_k|''.
+When a value is bound to an indexed pattern variable \verb|$x_i|, the system initiates an abstract map consisting of key-value pairs if \verb|x| is not bound to a map, and bind it to \texttt{x}.
+If \verb|x| is already bound to a map, a new key-value pair is added to this map.
+
+Now, we generalize \texttt{comb2}.
+The loop patterns can be used for that purpose.
+
+\begin{lstlisting}[language=egison]
+(define $comb
+  (lambda [$n $xs]
+    (match-all xs (list integer)
+      [(loop $i [1 {n} _]
+         <join _ <cons $x_i ...>>
+         _)
+       (map (lambda [$i] x_i) (between 1 n))])))
+
+(comb 2 {1 2 3 4}) ; {{1 2} {1 3} {2 3} {1 4} {2 4} {3 4}}
+(comb 3 {1 2 3 4}) ; {{1 2 3} {1 2 4} {1 3 4} {2 3 4}}
+\end{lstlisting}
+
+The loop pattern takes an \emph{index variable}, \emph{index range}, \emph{repeat pattern}, and \emph{end pattern} as arguments.
+An index variable is a variable to hold the current repeat count.
+An index range specifies the range where the index variable moves.
+A repeat pattern is a pattern repeated when the index variable is in the index range.
+An end pattern is a pattern expanded when the index variable gets out of the index range.
+
+Inside loop patterns, we can use the \emph{ellipsis pattern} (\texttt{...}).
+The repeat pattern or the end pattern is expanded at the location of the ellipsis pattern.
+The repeat pattern is expanded replacing the ellipsis pattern incrementing the value of the index variable.
+
+%The important difference between loop patterns and recursive patterns~\cite{queinnec1990compilation} is that loop patterns provide a simple method for changing the content of the pattern repeated depending on the repeat count.
+%Users can change the content of the repeat pattern by referring to the repeat count through the index variable.
+%Furthermore, indexed variables that often refer to the index variable in their index (such as \verb|$x_i| in the above samples) enable us to describe more expressive patterns by allowing us to refer to the values bound to the indexed pattern variable in the pattern previously repeated.
+
+\medskip
+
+The repeat counts of the loop patterns in the above samples are constants.
+However, we can also write a loop pattern whose repeat count varies depending on the target by specifying a pattern instead of an integer as the end number.
+When an end number is a pattern, the ellipsis pattern is replaced with both the repeat pattern and the end pattern, and the repeat count when the ellipsis pattern is replaced with the end pattern is pattern-matched with that pattern.
+The following loop pattern enumerates all head parts of the target collection.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(match-all {1 2 3 4} (list something)
+  [(loop $i [1 $n] <cons $x_i  ...> _)
+   (map (lambda [$i] x_i) (between 1 n))])
+; {{} {1} {1 2} {1 2 3} {1 2 3 4}}
+\end{lstlisting}
+}
+
+Loop patterns are heavily used especially for trees and graphs.
+We work on pattern matching for trees in Sect.~\ref{trees}.
+%Pattern matching for graphs is demonstrated in Appendix~\ref{graphs}.
+
+\subsection{Sequential Patterns for Controlling the Order of Pattern-Matching Process}\label{seq-patterns}
+
+The pattern-matching system of Egison processes patterns from left to right in order.
+However, there are cases where we want to change this order, for example, to refer to the value bound to the right side of a pattern.
+Sequential patterns are provided for such a purpose.
+
+
+Sequential patterns allow users to control the order of the pattern-matching process.
+A sequential pattern is represented as a list of patterns.
+Pattern matching is executed for each pattern in order.
+In the following sample, the target list is pattern-matched from the third, first, and second element in order.
+
+\begin{lstlisting}[language=egison]
+(match-all {2 3 1 4 5} (list integer)
+  [{<cons # <cons # <cons $x _>>>
+    [,(+ x 1) #]
+    ,(+ x 2)}
+   "Matched"])
+; {"Matched"}
+\end{lstlisting}
+
+\noindent ``\verb|@|'' that appears in a sequential pattern is called \emph{later pattern variable}.
+The target data bound to later pattern variables are pattern-matched in the next sequence.
+When multiple later pattern variables appear, they are pattern-matched as a tuple in the next sequence.
+It allows us to apply not-patterns for different parts of a pattern at the same time as we will see in Sect~\ref{tuple-of-collections}.
+
+Some readers might wonder that a sequential pattern can be transformed into a nested \texttt{match-all} expression.
+There are at least two reasons why it is impossible.
+First, a nested \texttt{match-all} expression breaks breadth-first search strategy: the inner \texttt{match-all} for the second result of the outer \texttt{match-all} is executed only after the inner \texttt{match-all} for the first result of the outer \texttt{match-all} is finished.
+Second, a later pattern variable retains the information of not only a target but also a matcher.
+There are cases that the matcher of \texttt{match-all} is a parameter passed as an argument of a function, and a pattern is polymorphic.
+Therefore, it is impossible to determine the matchers of inner \texttt{match-all} expressions syntactically.
+
+\subsection{Matcher Compositions}\label{matcher-compositions}
+
+Matchers are composable, and we can define matchers for such as tuples of multisets and multisets of multisets.
+Using this feature, we can define matchers for various data types.
+
+First, we can define a matcher for tuples by a tuple of matchers.
+A tuple pattern is used for pattern matching using such a matcher.
+For example, we can define the \texttt{intersect} function using a matcher for tuples of two multisets.
+We work on pattern matching for tuples of collections more in Sect.~\ref{tuple-of-collections}.
+
+\begin{lstlisting}[language=egison]
+(define $intersect
+  (lambda [$xs $ys]
+    (match-all [xs ys] [(multiset something) (multiset eq)]
+      [[<cons $x _> <cons ,x _>] x])))
+\end{lstlisting}
+
+\noindent \texttt{eq} is a user-defined matcher for data types for which equality is defined. 
+When the \texttt{eq} matcher is used, equality is checked for a value pattern.\footnote{A definition of the \texttt{eq} matcher is explained in Sect.~6.3 of~\cite{egi2018Aplas}.}
+%In fact, the \texttt{integer} matcher used in the previous sections is an alias of the \texttt{eq} matcher.
+
+By passing a tuple matcher to a function that takes and returns a matcher, we can define a matcher for various non-free data types.
+For example, we can define a matcher for a graph as a set of edges.
+In the following code, we assume a node id is represented by an integer.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $graph (multiset [integer integer]))
+\end{lstlisting}
+}
+
+\noindent A matcher for adjacency graphs also can be defined.
+An adjacency graph is defined as a multiset of tuples of an integer and a multiset of integers.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $adjacency-graph (multiset [integer (multiset integer)]))
+\end{lstlisting}
+}
+
+%\noindent We demonstrate pattern matching for these graphs in Appendix~\ref{graphs}.
+
+\medskip
+
+Some readers might wonder about matchers for algebraic data types.
+Egison provides a special syntax construct for defining a matcher for an algebraic data type.
+For example, a matcher for binary trees can be defined using \texttt{algebraicDataMatcher}.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $binary-tree
+  (lambda [$a]
+    (algebraic-data-matcher
+      {<b-leaf a> <b-node a (binary-tree a) (binary-tree a)>})))
+\end{lstlisting}
+}
+
+Matchers for algebraic data types and matchers for non-free data types also can be combined.
+For example, we can define a matcher for trees whose nodes have an arbitrary number of children whose order is ignorable.
+We show pattern matching for these trees in Sect.~\ref{trees}.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $tree
+  (lambda [$a]
+    (algebraic-data-matcher
+      {<leaf a> <node a (multiset (tree a))>})))
+\end{lstlisting}
+}
+
+\section{Pattern-Matching-Oriented Programming Design Patterns}\label{pmo1}
+
+This section introduces basic pattern-matching-oriented programming techniques that replace explicit recursions to intuitive patterns.
+In the first part of this section, we rewrite many list processing functions such as \texttt{map}, \texttt{filter}, \texttt{elem}, \texttt{delete}, \texttt{any}, \texttt{every}, \texttt{unique}, \texttt{concat}, and \texttt{difference}, for which we expect most functional programmers imagine the same definitions.
+In the latter part of this section, we move our focus to descriptions of more mathematical algorithms that are not well supported in the current functional programming languages.
+We proceed with this section by listing patterns that frequently appear and show situations in which they are useful.
+The following table shows this list.
+
+\begin{center}
+  \footnotesize
+  \begin{tabular}{llll}
+    \toprule
+    Name & Description & Explained in & Used in \\
+    \midrule
+    Join-cons pattern for list    & Enumerate combinations of elements.   & \ref{join-cons-pat} & \\
+    Cons pattern for multiset     & Enumerate permutations of elements.   & \ref{cons-pat} & \ref{tuple-of-collections}, ~\ref{nested-loop}, \ref{sat-solver}\\
+    Tuple pattern for collections & Compare multiple collections.         & \ref{tuple-of-collections} & \ref{nested-loop}, \ref{sat-solver} \\
+    Loop pattern                  & Describe repetitions inside patterns. & \ref{nested-loop} & \\
+    \bottomrule
+  \end{tabular}
+\end{center}
+
+
+\subsection{Join-Cons Patterns for Lists --- List Basic Functions}\label{join-cons-pat}
+
+Join patterns whose second argument is a cons pattern, such as ``\verb|_ ++ $x : _|'', are frequently used for lists.
+We call these patterns \emph{join-cons patterns}.
+Many basic list processing functions can be redefined by simply using this pattern.
+
+\subsubsection{Single Join-Cons Patterns --- The \texttt{map} Function and Its Family}
+
+``\verb|_ ++ $x : _|'' matches each element of the target collection when the \texttt{list} matcher is used.
+As a result, the \texttt{matchAll} expression below matches each element of \texttt{xs}, and returns the results of applying \texttt{f} to each of them.
+As discussed in Introduction, this \texttt{map} definition is very close to the explanation of \texttt{map} ((1) of Sect~\ref{introduction}).
+
+\begin{lstlisting}[language=egison]
+(define $map
+  (lambda [$f $xs]
+    (match-all xs (list something)
+      [<join _ <cons $x _>> (f x)])))
+\end{lstlisting}
+
+By modifying the above \texttt{matchAll} expression, we can define several functions.
+For example, we can define \texttt{filter} by inserting a predicate pattern.
+
+\begin{lstlisting}[language=egison]
+(define $filter
+  (lambda [$p $xs]
+    (match-all xs (list something)
+      [<join _ <cons (& ?p $x) _>> x])))
+\end{lstlisting}
+
+\noindent We can define \texttt{elem} by using a value pattern.
+\texttt{elem} is a predicate that determines whether the first argument element appears in the second argument list or not.
+\texttt{match} is provided also in Egison.
+\texttt{match} is just an alias of ``\texttt{car (matchAll ...)}'' because Egison evaluates \texttt{matchAll} lazily.\footnote{\texttt{matchAll} also can handle multiple match clauses. ``\texttt{matchAll} $t$ \texttt{as} $m$ \texttt{with} $c_1$ $c_2$ $...$'' is equivalent to ``\texttt{matchAll} $t$ \texttt{as} $m$ \texttt{with} $c_1$ \texttt{++} \texttt{matchAll} $t$ \texttt{as} $m$ \texttt{with} $c_2$ \texttt{++} $...$''.}
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $member?
+  (lambda [$x $xs]
+    (match xs (list eq)
+      {[<join _ <cons ,x _>> #t]
+       [_ #f]})))
+\end{lstlisting}
+}
+
+\noindent We can define \texttt{delete} that remove the first appearance of \texttt{x} from \texttt{xs} by modifying \texttt{elem}.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $delete
+  (lambda [$x $xs]
+    (match xs (list eq)
+      {[<join $hs <cons ,x $ts>> {@hs @ts}]
+       [_ #f]})))
+\end{lstlisting}
+}
+
+
+\noindent The predicate \texttt{any} and \texttt{every}~\cite{shivers1999srfi} also can be concisely defined with predicate patterns using \texttt{match}.
+\texttt{any} is a predicate that determines whether any element of the second argument list satisfies the first argument predicate.
+\texttt{every} is a predicate that determines whether all elements of the second argument list satisfy the first argument predicate.
+
+\begin{lstlisting}[language=egison]
+(define $any
+  (lambda [$p $xs]
+    (match xs (list something)
+      {[<join _ <cons ?p _>> #t]
+       [_ #f]})))
+
+(define $every
+  (lambda [$p $xs]
+    (match xs (list something)
+      {[<join _ <cons !?p _>> #f]
+       [_ #t]})))
+\end{lstlisting}
+
+\subsubsection{Nested Join-Cons Patterns --- The \texttt{unique} and \texttt{concat} Function}\label{nested-join-cons}
+
+By combining multiple join-cons patterns, we can describe more expressive patterns.
+One example is the \texttt{unique} function.
+The \texttt{unique} function is defined in the pattern-matching-oriented style as follows.
+
+\begin{lstlisting}[language=egison]
+(define $unique (lambda [$xs] (match-all xs (list eq) [<join _ <cons $x !<join _ <cons ,x _>>>> x])))
+\end{lstlisting}
+
+\noindent A not-pattern is used to describe that there is \emph{no} more \texttt{x} after an occurrence of \texttt{x}.
+Therefore, this pattern extracts only the last appearance of each element.
+
+\begin{lstlisting}[language=egison]
+(unique {1 2 3 2 4}) ; {1 3 2 4}
+\end{lstlisting}
+
+We can define \texttt{unique} whose results consist of the first appearance of each element by rewriting the above pattern using a predicate pattern with the \texttt{elem} predicate.
+To match only the first appearance of an element, we rewrite a pattern that ensures that the same element does not appear before that element.
+We cannot write such a pattern with a simple combination of the cons and join patterns because they match a target list from left to right.
+
+\begin{lstlisting}[language=egison]
+(define $unique
+  (lambda [$xs]
+    (match-all xs (list eq)
+      [<join $hs <cons (& !?(lambda [$x] (member? x hs)) $x) _>> x])))
+
+(unique {1 2 3 2 4}) ; {1 2 3 4}
+\end{lstlisting}
+
+Another more elegant solution is using a sequential pattern.
+We can describe the same pattern by using the sequential pattern for the first argument of join.
+
+\begin{lstlisting}[language=egison]
+(define $unique
+  (lambda [$xs]
+    (match-all xs (list eq)
+      [{<join # <cons $x _>> <join _ <cons ,x _>>} x])))
+\end{lstlisting}
+
+\medskip
+
+Another example of a nested join-cons pattern is \texttt{concat}.
+We can define \texttt{concat} in the pattern-matching-oriented style by combining a nested join-cons pattern and matcher composition.
+Note that \texttt{matchAllDFS} is necessary for ordering the output list properly.
+
+\begin{lstlisting}[language=egison]
+(define $concat
+  (lambda [$xss]
+    (match-all-dfs xss (list (list something))
+      [<join _ <join _  <cons $x _>> _> x])))
+\end{lstlisting}
+
+\noindent If we used \texttt{matchAll} instead of \texttt{matchAllDFS} for \texttt{concat}, it enumerates the elements of the input list of lists in circler order.
+
+\begin{lstlisting}[language=egison]
+(match-all {nats (map negate nats)} (list (list something))
+  [<join _ <join _  <cons $x _>> _> x]
+; {1 2 -1 3 -2 4 -3 5 -4 6}
+\end{lstlisting}
+
+\subsection{Cons Patterns for Multisets}\label{cons-pat}
+
+A single cons pattern for a multiset can replace a join-cons pattern for a list.
+For example, \texttt{elem} can be defined using a cons pattern for multiset as follows.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $member?
+  (lambda [$x $xs]
+    (match xs (multiset eq)
+      {[<cons ,x _> #t]
+       [_ #f]})))
+\end{lstlisting}
+}
+
+\noindent The \texttt{lookup} function for association lists can also be defined similarly.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(define $lookup
+  (lambda [$x $ls]
+    (match ls (multiset [eq something])
+      {[<cons [,k $x] _> x]})))
+\end{lstlisting}
+}
+
+The usage of cons patterns for multisets differs from that of join-cons patterns when they are nested.
+Cons patterns for multisets can be used to enumerate $P(n,k)$ permutations of $k$ elements, whereas join-cons patterns can be used to enumerate $C(n,k)$ combinations of $k$ elements.
+
+{\footnotesize
+\begin{lstlisting}[language=egison]
+(match-all {1 2 3} (list integer) [<join _ <cons $x <join _ <cons $y _>>>> [x y]])
+; {[1 2] [1 3] [2 3]}
+(match-all {1 2 3} (multiset integer) [<cons $x <cons $y _>> [x y]])
+; {[1 2] [1 3] [2 1] [2 3] [3 1] [3 2]}
+\end{lstlisting}
+}
+
+\noindent The descriptions of algorithms for which nested cons patterns are suitable become complicated in the traditional functional style.
+We can see that by just comparing the descriptions of the above two \texttt{matchAll} in functional programming.
+
+However, pattern matching for multisets often appears in mathematical algorithms.
+Besides that, a much wider variety of patterns exist for multisets than lists.
+As a result, functions that correspond to patterns for multisets are not implemented as library functions because naming all these patterns is not practical.
+In functional programming so far, they are defined as a recursive function or combining several functions by users each time.
+It makes functional descriptions of mathematical algorithms complicated.
+
+Thus, descriptions of these mathematical algorithms are the area where pattern-matching-oriented programming demonstrates its full power.
+The rest of this paper discusses how we can describe these wide variety of patterns for multisets by just combining pattern constructs introduced in Sect.~\ref{quick-tour}.
+
+\subsection{Tuple Patterns with Sequential Not-Patterns for Comparing Collections}\label{tuple-of-collections}
+
+When describing algorithms, we often meet a situation to compare multiple data.
+A tuple pattern combined with not-patterns is especially useful for this purpose.
+For example, we can define \texttt{difference} by inserting a not-pattern into the definition of \texttt{intersect} in Sect.~\ref{matcher-compositions}.
+
+\begin{lstlisting}[language=egison]
+(define $difference
+  (lambda [$xs $ys]
+    (match-all [xs ys] [(multiset eq) (multiset eq)]
+      [[<cons $x _> !<cons ,x _>] x])))
+\end{lstlisting}
+
+\noindent By changing the position of the not-pattern as ``\verb|!($x : _, #x : _)|'', we can also describe a pattern that matches when no common element exists between two collections.
+
+We can write more complicated patterns by combining these patterns with a sequential pattern that allows us to apply a not-pattern to separate parts of the pattern simultaneously.
+For example, a pattern that matches when only one common element exists between the two collections is described below.
+A sequential pattern enables us to describe the pattern-matching process that first extracts one common element from the two collections, and after that checks that no common element exists between the rest two collections.
+Sequential not-patterns often appear in mathematical algorithms, and we show an example again in Sect.~\ref{sat-solver}.
+
+\begin{lstlisting}[language=egison]
+(define $only-one-common-element
+  (lambda [$xs $ys]
+    (match-all [xs ys] [(multiset eq) (multiset eq)]
+      {[{[<cons $x #> !<cons ,x #>]
+         ![<cons $y _> !<cons ,y _>]}
+        #t]
+       [_ #f]})))
+\end{lstlisting}
+
+We can combine a sequential pattern also with a loop pattern.
+For example, we can write a pattern that matches the common head elements of two lists with a sequential loop pattern.
+
+\begin{lstlisting}[language=egison]
+(define $common-heads
+  (lambda [$xs $ys]
+    (match [xs ys] [(list eq) (list eq)]
+      {[(loop $i [1 $n]
+          {[<cons $x_i #> <cons ,x_i #>]
+           @...}
+          ![<cons $y _> <cons ,y _>]
+        (map (lambda [$i] x_i) (between 1 n))]})))
+\end{lstlisting}
+
+% TODO: これはlater patternでは表現できない．sequential patternでないとできない．
+% TODO: なぜなら，パターンの複数の部分をまとめたものにnot patternを適用しないとならないから．
+% TODO: パターンマッチの順番とデータ表現の順番が異なることがある．tupleのパターンマッチは，そのようなときに，sequential patternが役に立つというわかりやすい例．
+% TODO: この例のようなパターンマッチは，SAT solverの実装でも多用される．
+
+% パターンマッチの順番を制御したい(sequential patternを使いたい)のはどういう場面か．
+% 左から右へのパターンマッチが適していない場合．
+% データの表現とパターンの表現の順番に乖離がある場合．
+% sequential patternとlater patternの差は，not patternやloop patternと組み合わせられるかどうかにある．
+
+\subsection{Loop Patterns in Practice}\label{nested-loop}
+
+Loop patterns are used for describing repetitions in a pattern.
+It is useful when we construct a complicated pattern by combining simple pattern constructors (Sect.~\ref{trees}) and when the number of pattern variables that appear in a pattern changes by parameters (Sect.~\ref{n-queen}).
+In such situations, very complicated recursion is necessary for describing algorithms.
+Loop patterns make the descriptions of these algorithms intuitive by confining recursion in a pattern.
+This section introduces such examples.
+
+\subsubsection{Pattern Matching for Trees}\label{trees}
+
+This section demonstrates loop patterns by showing pattern matching for trees.
+The nodes of the trees in this section have an arbitrary number of children as XML, and they are handled as a multiset.
+A matcher for such a tree is defined as \texttt{tree} in Sect.~\ref{matcher-compositions}.
+We use this matcher in this section.
+
+We describe patterns for a category tree of programming languages.
+\texttt{treeData} defines the category tree.
+For example, \texttt{"Egison"} belongs to the \texttt{"Pattern-matching-oriented"} category, and the \texttt{"Dynamically typed"} sub-category of the \texttt{"Functional programming"} category.
+
+\begin{lstlisting}[language=egison]
+(define $tree-data
+  <Node "Programming language"
+    {<Node "Pattern-matching-oriented"
+       {<Leaf "Egison">}>
+     <Node "Functional language"
+       {<Node "Strictly typed"
+          {<Leaf "OCaml"> <Leaf "Haskell"> <Leaf "Curry"> <Leaf "Coq">}>
+        <Node "Dynamically typed"
+          {<Leaf "Egison"> <Leaf "Lisp"> <Leaf "Scheme"> <Leaf "Racket"> <Leaf "Clojure">}>}>
+     <Node "Logic programming"
+       {<Leaf "Prolog"> <Leaf "LiLFeS"> <Leaf "Curry">}>
+     <Node "Object oriented"
+       {<Leaf "C++"> <Leaf "Java"> <Leaf "Ruby"> <Leaf "Python"> <Leaf "OCaml">}>}>)
+\end{lstlisting}
+
+The \texttt{matchAll} expression below enumerates all categories to which a specified language belongs.
+A loop pattern is used to describe a pattern for this purpose because leaves can appear at an arbitrary depth.
+This pattern is interesting because the ellipsis pattern is not placed the tail of the repeat pattern.
+The ability to choose the position of expansion of a repeat pattern allows us to apply the loop patterns to trees.
+
+\begin{lstlisting}[language=egison]
+(define $ancestors
+  (lambda [$x $t]
+    (match-all tree-data (tree string)
+      [(loop $i [1 $n]
+         <node $c_i <cons ... _>>
+         <leaf ,x">)
+       (map (lambda [$i] c_i) (between 1 n))])))
+
+(ancestors "Egison" treeData)
+; {{"Programming language" "Pattern-matching-oriented"} {"Programming language" "Functional language" "Dynamically typed"}}
+\end{lstlisting}
+
+It is also possible to enumerate all languages that belong to a specific sub-category.
+We can use a doubly-nested loop pattern for this purpose because it allows the sub-category to appear at an arbitrary depth.
+The following pattern matches all the languages that belong to a specified category.
+We used \texttt{matchAllDFS} for this enumeration to make the order of the languages in the result the same as the order with which they appear in the tree.
+
+\begin{lstlisting}[language=egison]
+(define $descendants
+  (lambda [$x $t]
+    (match-all tree-data (tree string)
+      [(loop _ [1 _]
+         <node _ <cons ... _>>
+         <node ,x (loop _ [1 _]
+                    <node _ <cons ... _>>
+                    <leaf $y>)>)
+       y])))
+
+(descendants "Functional language" treeData)
+-- {"OCaml" "Haskell" "Curry" "Coq" "Egison" "Lisp" "Scheme" "Racket"}
+\end{lstlisting}
+
+Egison is more elegant than XML path language~\cite{berglund2003xml} for handling trees because we can describe the wide range of patterns by just combining a few simple pattern constructors and the loop patterns.
+In XML path, we would instead have to use the built-in \texttt{ancestor} command to enumerates all ancestors of a node, for example.
+
+\subsubsection{N-Queen Problem}\label{n-queen}
+
+This section introduces a more tricky example of nested loop patterns by introducing an $n$-queen solver in Egison.
+The $n$-queen problem is the problem of placing $n$ chess queens on an $n \times n$ board such that no queen can attack any of the other queens.
+In chess, a queen can attack other chess pieces on the same row, column, and diagonal.
+
+Let us start by showing a program for solving the four queen problem.
+In this program, we represent the positions of the four queens with a list.
+The number of the $n$-th element represents the row number of the queen of the $n$-th line.
+The solution must be a rearrangement of the list \verb|[1,2,3,4]| because no two queens can be in the same line or row.
+Therefore, we pattern-match a collection \verb|[1,2,3,4]| as a multiset of integers.
+The requirement that all two queens must not share the same diagonal is represented with conditions $a_1 \pm 1 \neq a_2$, $a_1 \pm 2 \neq a_3$, $a_2 \pm 1 \neq a_3$, $a_1 \pm 3 \neq a_4$, $a_2 \pm 2 \neq a_4$, and $a_3 \pm 1 \neq a_4$.
+
+\begin{lstlisting}[language=egison]
+(define $four-queens
+  (match-all {1 2 3 4} (multiset integer)
+    [<cons $a_1
+      <cons (& !,(- a_1 1) !,(+ a_1 1) $a_2)
+       <cons (& !,(- a_1 2) !,(+ a_1 2) !,(- a_2 1) !,(+ a_2 1) $a_3)
+        <cons (& !,(- a_1 3) !,(+ a_1 3) !,(- a_2 2) !,(+ a_2 2) !,(- a_3 1) !,(+ a_3 1) $a_4)
+         <nil>>>>>
+     {a_1 a_2 a_3 a_4}]))
+
+four-queens ; {{2 4 1 3} {3 1 4 2}}
+\end{lstlisting}
+
+We can use a doubly-nested loop pattern for generalizing this pattern for the $n$-queen solver.
+The index pattern variable ``\verb|i|'' of the outer loop is referred in the index range of the inner loop pattern for describing the difference of the repeat count of inner loop patterns.
+Also note that the values bound in the previously repeated pattern are referred as ``\verb|a_j|'' in \verb|#(a_j - (i - j))| and  \verb|!#(a_j + (i - j))|.
+Non-linearity of indexed pattern variables are effectively used for representing this pattern.
+
+\begin{lstlisting}[language=egison]
+(define $n-queens
+  (lambda [$n]
+    (match-all (between 1 n) (multiset integer)
+      [<cons $a_1
+        (loop $i [2 n]
+              <cons (loop $j [1 (- i 1)]
+                          (& !,(- a_j (- i j)) !,(+ a_j (- i j)) ...)
+                          $a_i)
+                    ...>
+              <nil>)>
+      (map (lambda [$i] a_i) (between 1 n))])))
+
+(n-queens 4) ; {{2 4 1 3} {3 1 4 2}}
+\end{lstlisting}
+
+
+\section{Pattern-Matching-Oriented Programming in More Practical Situations}\label{pmo2}
+
+This section discusses how pattern-matching-oriented programming changes the implementation of more practical algorithms and software.
+
+%Sect.~\ref{sat-solver} discusses how pattern-matching-oriented programming changes the implementation of a more practical algorithm.
+%Sect.~\ref{cas} discussed how pattern-matching-oriented programming is useful for implementing mathematical software.
+%Sect.~\ref{query-lang} software engineering.
+
+\subsection{SAT Solver}\label{sat-solver}
+
+To see the effect of pattern-matching-oriented programming for implementing practical algorithms, we implement a SAT solver.
+A SAT solver determines whether a given propositional logic formula has an assignment with which the formula is evaluated to true.
+Input formulae for SAT solvers are often in \emph{conjunctive normal form}.
+A formula in conjunctive normal form is a conjunction of clauses, which are disjunctions of \emph{literals}.
+A literal is a formula whose form is $P$ or $\neg P$.
+For example, $(P \wedge Q) \lor (\neg P \wedge R) \lor (\neg P \wedge \neg R)$ is a formula in conjunctive normal form that has a solution; $P = \texttt{False}$, $Q = \texttt{True}$, and $R = \texttt{True}$.
+
+\subsubsection{The Davis-Putnam Algorithm}
+
+In our implementation, propositional logic formulae in conjunctive normal form are represented as a collection of collections of literals.
+We can pattern-match them as a multiset of multisets of literals because both $\wedge$ and $\lor$ are commutative operators.
+Therefore, the matcher for these formulae can be defined by simply composing matchers as ``\texttt{multiset (multiset integer)}''.
+
+The program below shows the main part of our implementation of the Davis-Putnam algorithm\cite{harrison2009handbook}.
+The \texttt{sat} function takes a list of propositional variables and a logical formula, and returns \texttt{True} if there is a solution, otherwise returns \texttt{False}.
+
+\begin{lstlisting}[language=egison]
+(define $sat
+  (lambda [$vars $cnf]
+    (match [vars cnf] [(multiset integer) (multiset (multiset integer))]
+      {[[_ <nil>] #t]
+       [[_ <cons <nil> _>] #f]
+       [[_ <cons <cons $l <nil>> _>] ; 1-literal rule
+        (sat (delete (abs l) vars) (assign-true l cnf))]
+       [[<cons $v $vs> !<cons <cons ,(neg v) _> _>] ; pure literal rule (positive)
+        (sat vs (assign-true v cnf))]
+       [[<cons $v $vs> !<cons <cons ,v _> _>] ; pure literal rule (negative)
+        (sat vs (assign-true (neg v) cnf))]
+       [[<cons $v $vs> _] ; otherwise
+        (sat vs {@(resolve-on v cnf) @(delete-clauses-with {v (neg v)} cnf)})]})))
+\end{lstlisting}
+
+The first match clause describes the input formula has a solution when it is empty.
+The second match clause describes that there is no solution when clauses include an empty clause.
+The third match clause represents \emph{1-literal rule}.
+When the input formula includes a clause with a single literal, we can assign that literal \texttt{True} at once.
+The fourth match clause describes that if there is a propositional variable that appears only positively, we can set the value of this literal \texttt{True} and remove the propositional variable of \texttt{x} from the variable list and the clauses that include this literal from the formula.
+For example, $(p \wedge q) \lor (\neg p \wedge r) \lor (\neg p \wedge \neg r)$ contains a propositional variable $q$ only positively, so we can assign $q$ \texttt{True} and remove the first clause from the next recursion.
+The fifth match clause describes the opposite of the fourth match clause.
+It removes the clauses that include this literal if there is a propositional variable that appears only negatively ($p$ in the above sample is such propositional variable).
+The final match clause applies the resolution principle.
+This match clause lists all pairs of clauses $p \wedge C$ and $\neg p \wedge D$ (let $C$ and $D$ be a disjunction of literals), and obtains new clauses $C \wedge D$.
+
+The above definition of \texttt{sat} describes all rules for simplifying an input formula by fully utilizing pattern matching for multisets.
+In traditional functional languages, we need to call several library functions and define several helper functions to describe these conditional branches.
+The same algorithm is implemented in OCaml in~\cite{harrison2009handbook}.
+
+\subsubsection{Pattern Matching for Resolution}
+
+The \texttt{resolveOn} function is defined using \texttt{matchAll} as follows.
+
+\begin{lstlisting}[language=egison]
+(define $resolve-on
+  (lambda [$v $cnf]
+    (match-all cnf (multiset (multiset integer))
+      [<cons <cons ,v $xs>
+        <cons <cons ,(neg v) $ys>
+          _>>
+       (unique (filter (lambda [$c] (not (tautology? c))) {@xs @ys}))])))
+\end{lstlisting}
+
+\noindent The above \texttt{resolveOn} removes tautological clauses by using the \texttt{tautology} predicate.
+We can remove the use of this function by modifying the above pattern using a sequential not-patterns discussed in Sect.~\ref{tuple-of-collections}.
+
+\begin{lstlisting}[language=egison]
+(define $resolve-on
+  (lambda [$v $cnf]
+    (match-all cnf (multiset (multiset integer))
+      [{<cons <cons ,v (& # $xs)>
+         <cons <cons ,(neg v) (and # $ys)>
+          _>>
+        ![<cons $l _> <cons ,(neg l) _>]}
+       (unique {@xs @ys})])))
+\end{lstlisting}
+
+\subsection{Computer Algebra}\label{cas}
+
+As an application of Egison, we have developed a computer algebra system in Egison~\cite{egisonMath}.
+In Egison, we can implement a pattern-matching engine for mathematical expressions in a short program by defining a matcher for mathematical expressions.
+
+\begin{lstlisting}[language=egison]
+mathExpr = matcher
+             Div $ $ as (mathExpr, mathExpr) with
+               Div $x $y -> [(x, y)]
+               $tgt -> [(tgt, 1)]
+             Poly $ as multiset mathExpr with
+               $tgt -> [tgt]
+             Term $ $ as (integer, multiset (mathExpr, integer)) with
+               Term $c $xs -> [(c, xs)]
+             App $ $ as (mathExpr, list mathExpr) with
+               App $f $args -> [(f, args)]
+             Symbol $ as string with
+               Symbol $name -> [name]
+             $ as something with
+               $tgt -> [tgt]
+\end{lstlisting}
+
+The matcher for mathematical expressions is used for implementing simplification algorithms of mathematical expressions.
+For example, a program that simplifies a mathematical expression by reducing $\cos^2(\theta) + \sin^2(\theta)$ to $1$ can be implemented as follows.
+
+\begin{lstlisting}[language=egison]
+simplifyCosAndSinInPoly poly =
+  match poly as mathExpr with
+    Poly (Term $n ((App (Sym #"cos") [$x]), 2):$y) : Term #n ((App (Sym #"sin") [#x], 2):#y) : r) ->
+     simplifyCosAndSinInPoly (n * y + r)
+    _ -> poly
+\end{lstlisting}
+
+\noindent Using some syntax sugar, we can rewrite the above pattern as follows.
+
+\begin{lstlisting}[language=egison]
+simplifyCosAndSinInPoly poly =
+  match poly as mathExpr with
+    (+ (* $n (#cos $x)^#2 $y) (* #n (#sin $x)^#2 #y) $r) ->
+     simplifyCosAndSinInPoly (n * y + r)
+    _ -> poly
+\end{lstlisting}
+
+The definition of a matcher for mathematical expressions is simple compared with the pattern-matching engines of the other computer algebra systems.
+As a result, the implementation of the whole computer algebra system is also compact and straightforward; therefore, this computer algebra system is easily extensible.
+This extensibility allows us to experiment with new features easily.
+
+This extensibility is a significant advantage in the future of computer algebra system in the field of which there are still notations that are popular among researchers but cannot be used in programs.
+There are many possibilities of research for extending computer algebra systems to support these notations.
+The extensibility of computer algebra systems will help us advance this research.
+
+Such work has already been done by Egi who has developed a natural method for importing tensor index notation into programming~\cite{egi2017scalar}.
+Thanks to this work, Egison became an appropriate computer algebra system for describing formulae of differential geometry.
+We are now preparing a paper whose results are calculated using Egison collaborating with researchers of differential geometry.
+
+\subsection{Database Query Languages}\label{query-lang}
+
+Egison pattern matching can provide a unified query language for various kinds of databases.
+For example, let us consider an SNS database and a query to list all users who are followed by a user whose name is ``\verb|Egison_Lang|'' but who do not follow this user.
+This query can be written with \texttt{matchAll} as follows using Egison pattern matching.
+This query pattern-matches the tables of a relational database as sets.
+
+\begin{lstlisting}[language=egison]
+matchAll (users, follows, users) as (set user, set follow, set user) with
+  ((and (Name #"Egison_Lang") (ID $uid)) : _,
+   (and (FromID #uid) (ToID $fid)) : !((and (FromID #fid) (ToID #uid)) : _),
+   (and (ID #fid) (Name $fname)) : _) -> (fid, fname)
+\end{lstlisting}
+
+The conciseness of the queries is an important advantage of Egison over other query languages.
+For example, the same query described in SQL is more complicated.
+We need to write all conditions in \texttt{WHERE} clauses instead of a non-linear pattern and a sub-query instead of a not-pattern.
+A query in the pattern-matching-oriented style can be interpreted by reading it once from left to right in order, whereas one in SQL cannot.
+
+\begin{lstlisting}[language=egison]
+SELECT DISTINCT ON (user.name) user.name
+  FROM user AS user1, follow AS follow1, user AS user2
+  WHERE user1.name = 'Egison_Lang' AND follow1.from_id = user1.id AND user2.id = follow1.to_id
+    AND NOT EXISTS
+      (SELECT '' FROM follow AS follow2
+         WHERE follow2.from_id = follow1.to_id AND follow2.to_id = user1.id
+\end{lstlisting}
+
+In addition to the conciseness, its generality is another advantage of Egison.
+Query languages such as SQL~\cite{chamberlin1974sequel}, XML path language~\cite{berglund2003xml} and graph query languages~\cite{perez2006semantics,rodriguez2015gremlin,neo4jManual} only focus on handling their target data structures and have many built-in functions to handle various patterns.
+On the other hand, Egison pattern-matching system allows users to describe various patterns for various data types in a unified manner with a small number of pattern constructors.
+
+
+\section{Conclusion}\label{conclusion}
+
+This paper has presented programming techniques that replace explicit recursions for traversing search trees with intuitive patterns and allow programmers to concentrate on the description of the essential parts of algorithms that reduce the computational complexities of the algorithms.
+This paper listed many algorithms that can be represented more elegantly this way.
+These include many very basic list processing functions to some larger more practical algorithms.
+
+We believe the development of these programming techniques that enable the more intuitive representation of algorithms extends the limit on the complexity of software that we can practically implement and has potential to accelerate research of computer science as a whole.
+We focused on the data abstraction for non-free data types in this paper.
+However, there must be more data types waiting to be abstracted.
+We hope this paper leads to the further evolution of pattern matching and progress of data abstraction in the next age.
+
+\section*{Acknowledgments}
+We thank Kentaro Honda, who is the first real user of Egison, for his contribution to some sample programs in this paper.
+We thank Pierre Imai, Matthew Roberts, and Paul Harvey for helpful feedback on the earlier versions of the paper.
+
+\printbibliography
+
+\newpage
+
+\appendix
+
+\section{Creating Your Own Matchers}\label{define-matchers}
+
+There are data types whose matchers cannot be defined by just composing the existing matchers.
+For example, matchers for lists and multisets are such matchers.
+This section explains how to define matchers from scratch through examples.
+We omit an explanation of the formal semantics of matchers and the pattern-matching algorithm inside Egison and instead focus on an explanation of programming techniques used for defining matchers.
+For the detailed description of the formal semantics, please refer to the original paper of Egison pattern matching~\cite{egi2018Aplas}.
+
+Sect.~\ref{multiset} explain how to create a matcher by showing a definition of the \texttt{multiset} matcher.
+We show that the pattern-matching-oriented programming techniques presented in this paper are useful also for matcher definitions.
+Sect.~\ref{sorted-list} introduces a programming technique specific to matcher definitions by showing a definition of the \texttt{sorted-list} matcher.
+
+
+\subsection{Multiset Matcher}\label{multiset}
+
+Matcher definition is the most technical part in pattern-matching-oriented programming.
+This section explains the method for defining a matcher by showing a matcher definition for multisets.
+The program below shows a matcher definition for multisets.
+The multiset matcher is the most basic nontrivial matcher.
+This section explores the detail of this definition.
+
+\begin{lstlisting}[language=egison]
+(define $multiset
+  (lambda [$a]
+    (matcher
+      {[<nil> []
+        {[{} {[]}]
+         [_ {}]}]
+       [<cons $ $> [a (multiset a)]
+        {[$tgt (match-all tgt (list a)
+                 [<join $hs <cons $x $ts>> [x {@hs @ts}]])]}]
+       [,$val []
+        {[$tgt (match [val tgt] [(list a) (multiset a)]
+                 {[[<nil> <nil>] {[]}]
+                  [[<cons $x $xs> <cons ,x ,xs>] {[]}]
+                  [[_ _] {}]})]}]
+       [$ [something]
+        {[$tgt {tgt}]}]})))
+\end{lstlisting}
+
+A matcher is defined using the \texttt{matcher} expression.
+The \texttt{matcher} expression is a built-in syntax of Egison.
+\texttt{matcher} takes a collection of \emph{matcher clauses}.
+A matcher clause is a triple of a \emph{primitive-pattern pattern}, a \emph{next-matcher expression}, and a \emph{next-target expression}.
+
+A matcher is a kind of function that takes a pattern and target, and returns lists of the next \emph{matching atoms}.
+A matching atom is a triple of a pattern, target, and matcher.
+A primitive-pattern pattern matches a pattern.
+Patterns that match with \emph{pattern holes} (``\verb|$|'' inside primitive-pattern patterns) are next patterns.
+A next-matcher expression returns next matchers.
+A next-target expression is a function that takes a target and returns a list of next targets.
+A matcher generates a list of the next matching atoms by combining next patterns, next matchers, and a list of next targets.\footnote{In Egison, pattern matching is implemented as reductions of stacks of matching atoms.
+Each list of the next matching atoms returned by a matcher is pushed to the stack of matching atoms.
+As a result, a single stack of matching atom is reduced to multiple stacks of matching atoms in a single reduction step.
+Pattern matching is recursively executed for each stack of matching atoms.
+When a stack becomes empty, it means pattern matching for this stack succeeded.}
+
+The \texttt{multiset} matcher has four matcher clauses.
+The first matcher clause handles a nil pattern, and it checks whether the target is an empty collection or not.
+The second matcher clause handles a cons pattern.
+The third matcher clause handles a value pattern.
+This matcher clause defines the equality of multisets.
+The fourth matcher clause handles the other patterns for multiset: a pattern variable and wildcard.
+
+\medskip
+
+First, we focus on the second matcher clause.
+The primitive-pattern pattern of the second matcher clause is ``\verb|$ : $|'', and the next matcher expression is ``\verb|(a, multiset a)|''.
+It means two arguments of the cons pattern are next patterns and they are pattern-matched using the ``\verb|a|'' and ``\verb|multiset a|'' matchers, respectively.
+``\verb|a|'' is an argument of \texttt{multiset} and the matcher for inner elements of a multiset.
+In the next target expression, a simple join-cons pattern is used to decompose a target collection into an element and the rest collection.
+For example, when the target is a collection \texttt{[1,2,3]}, this next-target expression returns \texttt{[(1,[2,3]),(2,[1,3]),(3,[1,2])]}.
+Each tuple of the next targets is pattern-matched using the next patterns and the next matchers recursively.
+For example, \texttt{1} and \texttt{[2,3]} are pattern-matched using the ``\texttt{a}'' and ``\texttt{multiset a}'' matcher with the first and the second argument of the cons pattern, respectively.
+
+\medskip
+
+Next, we focus on the third matcher clause.
+This matcher clause is as technical as the second matcher clause.
+The primitive-pattern pattern of this matcher clause is ``\verb|#$val|''.
+It is called a \emph{value-pattern pattern}.
+A value-pattern pattern matches a value pattern.
+This matcher clause compares the content of a value pattern (\texttt{val}) and a target (\texttt{tgt}) as multisets.
+The \texttt{match} expression is used for this comparison.
+Interestingly, \verb|tgt| is recursively pattern-matched as ``\texttt{multiset a}''.
+
+The first and the third match clauses of this \texttt{match} expression are simple.
+The first match clause describes that it returns ``\verb|[()]|'' when both \texttt{val} and \texttt{tgt} are empty.
+This return value means pattern matching for the value pattern succeeded.
+The third match clause describes that it returns ``\verb|[]|'' if pattern matching for the patterns of both the first and the second match clause failed.
+This return value means pattern matching for the value pattern failed.
+
+The second match clause is the most technical part of this \texttt{match} expression.
+The value pattern ``\verb|#xs|'' is recursively pattern-matched using this matcher clause itself.
+The collection \texttt{xs} is one element shorter than \texttt{tgt}.
+Therefore, this recursion finally reaches the first or the third match clause if \texttt{val} and \texttt{tgt} are finite.
+
+\medskip
+
+Finally, let us also explain the fourth matcher clause.
+This matcher clause creates the next matching atom by just changing the matcher from ``\texttt{multiset a}'' to \texttt{something}.
+
+\subsection{Matcher for Sorted Lists}\label{sorted-list}
+
+Modularization of pattern-matching algorithms by matchers not by patterns enables polymorphic patterns.
+However, its merit extends beyond polymorphic patterns; matchers enable descriptions of more efficient pattern matching keeping patterns concise.
+The reason is that pattern matching against patterns inside matcher definitions allows us to describe more detailed pattern-matching algorithms.
+This section shows such an example, a matcher for sorted lists.
+
+The program that used a doubly-nested join-cons pattern for enumerating pairs of prime numbers whose forms are $(p,p+6)$ gets slower when the number of the enumerating prime pairs gets larger.
+The reason is that the program enumerates all the combinations of prime numbers.
+For example, the program tries to match all the pairs such as $(3,5), (3,7), (3,11), (3,13), (3, 17), (3,19)$, and so on.
+However, we should avoid enumerating the pairs after $(3,11)$, the first pair whose difference is more than $6$.
+This is because it is obvious that the difference between all the pairs after $(3,11)$ are more than $6$.
+
+\begin{lstlisting}[language=egison]
+(take 10 (match-all primes (sorted-list integer)
+           [<join _ <cons $p _ <cons ,(+ p 6) _>>>> [p (+ p 6)]]))
+; {[5 11] [7 13] [11 17] [13 19] [17 23] [23 29] [31 37] [37 43] [41 47] [47 53]}
+\end{lstlisting}
+
+We can avoid this unnecessary search by creating a new matcher that is specialized for sorted lists.
+We can define such a matcher by adding a matcher clause with the primitive-pattern pattern ``\verb|$ ++ #$px : $|'' to the \texttt{list} matcher as shown below.
+This matcher clause improves the theoretical time complexity of the above pattern from $O(n^2)$ to $O(n)$.
+
+\begin{lstlisting}[language=egison]
+(define $sorted-list
+  (lambda [$a]
+    (matcher
+      {[<join $ <cons ,$px $>> [(sorted-list a) (sorted-list a)]
+        {[$tgt (match-all tgt (list a)
+                 [(loop $i [1 $n] <cons (& ?(lt? $ px) $h_i) ...> <cons ,px $ts>)
+                  [(map (lambda [$i] h_i) (between 1 n)) ts]])]}]
+       ...})))
+\end{lstlisting}
+
+Note that this method is only applicable to Egison that modularizes pattern-matching methods for each matcher, not for each pattern.
+The reason is that we need to match patterns whose form is ``\verb|_ ++ #x : _|'' as mentioned above.
+If pattern-matching methods are modularized for each pattern, we need to introduce a new pattern constructor ``\verb|joinCons ... ...|'' that is equivalent to ``\verb|_ ++ ... : ...|'' for this purpose.
+
+\section{Implementation of a SAT Solver}\label{sat-program}
+
+\begin{lstlisting}[language=egison]
+(define $delete-literals
+  (lambda [$ls $cnf]
+    (map (lambda [$c] (match-all [c ls] [(multiset integer) (multiset integer)]
+                        [[<cons $l _> !<cons ,l _>] l]))
+         cnf)))
+
+(define $delete-clauses-with
+  (lambda [$ls $cnf]
+    (match-all [ls cnf] [(multiset integer) (multiset (multiset integer))]
+      [{[# <cons (& # $c) _>]
+        ![<cons $l _> <cons ,l _>]}
+       c])))
+
+(define $assign-true
+  (lambda [$l $cnf]
+    (delete-literals {(neg l)} (delete-clauses-with {l} cnf))))
+
+(define $resolve-on
+  (lambda [$v $cnf]
+    (match-all cnf (multiset (multiset integer))
+      [{<cons <cons ,v (& # $xs)>
+         <cons <cons ,(neg v) (and # $ys)>
+          _>>
+        ![<cons $l _> <cons ,(neg l) _>]}
+       (unique {@xs @ys})])))
+
+(define $sat
+  (lambda [$vars $cnf]
+    (match [vars cnf] [(multiset integer) (multiset (multiset integer))]
+      {[[_ <nil>] #t]
+       [[_ <cons <nil> _>] #f]
+       [[_ <cons <cons $l <nil>> _>] (sat (delete (abs l) vars) (assign-true l cnf))]
+       [[<cons $v $vs> !<cons <cons ,(neg v) _> _>] (sat vs (assign-true v cnf))]
+       [[<cons $v $vs> !<cons <cons ,v _> _>] (sat vs (assign-true (neg v) cnf))]
+       [[<cons $v $vs> _] (sat vs {@(resolve-on v cnf) @(delete-clauses-with {v (neg v)} cnf)})]})))
+
+(sat {1} {{1}}) ; #t
+(sat {1} {{1} {-1}}) ; #f
+(sat {1 2 3} {{1 2} {-1 3} {1 -3}}) ; #t
+(sat {1 2} {{1 2} {-1 -2} {1 -2}}) ; #t
+(sat {1 2} {{1 2} {-1 -2} {1 -2} {-1 2}}) ; #f
+(sat {1 2 3 4 5} {{-1 -2 3} {-1 -2 -3} {1 2 3 4} {-4 -2 3} {5 1 2 -3} {-3 1 -5} {1 -2 3 4} {1 -2 -3 5}}) ; #t
+(sat {1 2} {{-1 -2} {1}}) ; #t
+\end{lstlisting}
+
+\end{document}
